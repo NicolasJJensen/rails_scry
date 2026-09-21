@@ -1,0 +1,282 @@
+module Scry
+  VERSION: String
+  type filter_definition = Hash[String | Symbol, untyped]
+  type metadata = Hash[Symbol, untyped]
+  type custom_property_type = "boolean" | :boolean
+  type registry_entry = Hash[String | Symbol, untyped]
+  type path = Array[Symbol | String | Integer]
+
+  interface _FilterClass
+    def new: (model: untyped, filter: filter_definition, context: untyped, ?depth: Integer) -> Filters::Base
+  end
+
+  class FilterError < StandardError
+    attr_reader result: Result?
+  end
+  class InvalidOperandError < FilterError
+  end
+  class CallbackFailure < StandardError
+    attr_reader diagnostic: Diagnostic
+    def initialize: (String, diagnostic: Diagnostic) -> void
+  end
+  class ReportedError < FilterError
+    attr_reader diagnostic: Diagnostic
+    def initialize: (Diagnostic) -> void
+  end
+
+  class Diagnostic
+    def self.new: (category: Symbol, code: Symbol, path: path, message: String) -> instance
+    attr_reader category: Symbol
+    attr_reader code: Symbol
+    attr_reader path: path
+    attr_reader message: String
+    def to_h: () -> metadata
+  end
+
+  class Result
+    def self.success: (untyped) -> instance
+    def self.partial: (untyped, diagnostics: Array[Diagnostic]) -> instance
+    def self.failure: (relation: untyped, message: String, ?category: Symbol, ?code: Symbol, ?path: path) -> instance
+    def self.new: (status: :success | :partial | :failed, relation: untyped, ?diagnostics: Array[Diagnostic]) -> instance
+    attr_reader status: :success | :partial | :failed
+    attr_reader relation: untyped
+    attr_reader diagnostics: Array[Diagnostic]
+    def success?: () -> bool
+    def partial?: () -> bool
+    def failed?: () -> bool
+    def with_relation: (untyped) -> instance
+  end
+
+  def self.configuration: () -> Configuration
+  def self.configure: () { (Configuration) -> untyped } -> untyped
+  def self.logger: () -> untyped
+  def self.filter_records_by: (records: untyped, filter: filter_definition, ?context: untyped) -> Result
+  def self.validate_filter: (model: untyped, filter: filter_definition, ?context: untyped) -> Array[Diagnostic]
+  def self.filter_capabilities: (model: untyped, ?context: untyped, ?locale: Symbol | String) -> metadata
+  def self.empty_information: () -> metadata
+  def self.clear_thread_caches!: () -> untyped
+  def self.install_arel_extensions!: () -> bool
+  def self.invoke_callback: (label: String, model: untyped, context: untyped, ?path: path) { () -> untyped } -> untyped
+
+  class Configuration
+    def self.instance: () -> instance
+    attr_reader predicate_registry: PredicateRegistry
+    attr_reader aggregate_registry: AggregateRegistry
+    attr_reader filter_class_mappings: Hash[String | Symbol, _FilterClass]
+    attr_reader invalid_filter_policy: Symbol
+    attr_reader callback_error_policy: Symbol
+    attr_reader diagnostic_logging: Symbol
+    attr_reader max_filter_depth: Integer
+    attr_reader max_filter_nodes: Integer
+    attr_reader max_filter_bytes: Integer
+    attr_reader strict: bool
+    attr_reader logger: untyped
+    attr_reader log_context: (^(untyped) -> untyped)?
+    def invalid_filter_policy=: (Symbol | String) -> (Symbol | String)
+    def callback_error_policy=: (Symbol | String) -> (Symbol | String)
+    def diagnostic_logging=: (Symbol | String) -> (Symbol | String)
+    def max_filter_depth=: (Integer) -> Integer
+    def max_filter_nodes=: (Integer) -> Integer
+    def max_filter_bytes=: (Integer) -> Integer
+    def strict=: (bool) -> bool
+    def logger=: (untyped) -> untyped
+    def log_context=: ((^(untyped) -> untyped)?) -> untyped
+    def settings_locked?: () -> bool
+    def lock_settings!: () -> Configuration
+    def cache_key: () -> Array[untyped]
+    def with_temporary_settings: () { (Configuration) -> untyped } -> untyped
+    def register_filter: (String | Symbol, _FilterClass) -> untyped
+    def register_predicate: (String | Symbol, ?types: Array[Symbol | String], ?applies_to: Array[Symbol | String], ?compounds: bool, ?arel_predicate: Symbol | String | nil, ?formatter: untyped, ?validator: untyped, ?adapters: Array[Symbol | String]?, ?prepare_arguments: ^(Array[untyped]) -> Array[untyped]) ?{ (untyped, *untyped) -> untyped } -> untyped
+    def unregister_predicate: (*(String | Symbol)) -> untyped
+    def unregister_predicate_from_type: (String | Symbol, *(String | Symbol)) -> untyped
+    def register_aggregate: (String | Symbol, ?types: Array[Symbol | String], ?result_type: Symbol | String, ?distinct: bool, ?empty_value: untyped, ?property: bool, ?adapters: Array[Symbol | String]?, ?composite_distinct: bool) { (untyped, bool) -> untyped } -> untyped
+    def unregister_aggregate: (*(String | Symbol)) -> untyped
+    def unregister_aggregate_from_type: (String | Symbol, *(String | Symbol)) -> untyped
+    def register_types: (String | Symbol, *(String | Symbol)) -> untyped
+    def unregister_types: (*(String | Symbol)) -> untyped
+    def unregister_types_from_group: (String | Symbol, *(String | Symbol)) -> untyped
+    def types: () -> Array[Symbol]
+    def invalidate_filter_caches!: () -> untyped
+  end
+
+  class TypeRegistry
+    def initialize: () -> void
+    attr_reader revision: Integer
+    def register: (String | Symbol, *(String | Symbol)) -> untyped
+    def unregister: (*(String | Symbol)) -> untyped
+    def unregister_from_group: (String | Symbol, *(String | Symbol)) -> untyped
+    def by_group: (String | Symbol) -> Array[Symbol]
+    def descendants: (String | Symbol) -> Array[Symbol]
+    def snapshot: () -> untyped
+    def restore: (untyped) -> untyped
+    def frozen?: () -> bool
+    def warm!: () -> untyped
+    def warmed?: () -> bool
+  end
+
+  class BaseRegistry
+    def initialize: (?type_registry: TypeRegistry?) -> void
+    attr_reader type_registry: TypeRegistry
+    def cache_key: () -> Array[Integer]
+    def register: (registry_entry) -> untyped
+    def unregister: (*(String | Symbol)) -> untyped
+    def unregister_from_type: (String | Symbol, *(String | Symbol)) -> untyped
+    def register_types: (String | Symbol, *(String | Symbol)) -> untyped
+    def unregister_types: (*(String | Symbol)) -> untyped
+    def unregister_types_from_group: (String | Symbol, *(String | Symbol)) -> untyped
+    def by_name: (String | Symbol) -> registry_entry?
+    def by_type: (String | Symbol) -> untyped
+    def names: () -> Array[Symbol]
+    def types: () -> Array[Symbol]
+    def types_in_group: (String | Symbol) -> Array[Symbol]
+    def metadata_for: (String | Symbol, ?locale: String | Symbol) -> metadata?
+    def metadata_hash: (untyped, ?locale: String | Symbol) -> metadata
+    def snapshot: () -> untyped
+    def restore: (untyped) -> untyped
+    def frozen?: () -> bool
+    def warm!: () -> untyped
+    def warmed?: () -> bool
+  end
+
+  class PredicateRegistry < BaseRegistry
+    def apply_types_to_predicate: (String | Symbol, *(String | Symbol)) -> untyped
+  end
+
+  class AggregateRegistry < BaseRegistry
+  end
+
+  # Public association-predicate primitives. `for_attribute` accepts either an
+  # ordinary model Arel attribute or the prepared attribute supplied by the DSL.
+  class AssociationQuery
+    class CandidateKeySet
+      def initialize: (AssociationQuery, untyped) -> void
+      def projection: () -> untyped
+      def count: () -> untyped
+    end
+
+    def self.for_attribute: (untyped) -> AssociationQuery
+    attr_reader model: untyped
+    attr_reader reflection: untyped
+    attr_reader child_model: untyped
+    attr_reader joined_relation: untyped
+    attr_reader child_table: untyped
+    def parent_keys: () -> Array[untyped]
+    def matching: (untyped, ?scoping: untyped) -> untyped
+    def eligible_child_relation: () -> untyped
+    def owner_membership: (untyped) -> untyped
+    def owner_child_predicate: (Symbol | String, untyped) -> untyped
+    def has_any: (untyped) -> untyped
+    def owner_count_at_least: (untyped, minimum: Integer) -> untyped
+    def not_has_any: (untyped) -> untyped
+    def has_all: (untyped) -> untyped
+    def not_has_all: (untyped) -> untyped
+    def only_has_any: (untyped) -> untyped
+    def only_has_all: (untyped) -> untyped
+  end
+
+  module Filterable
+    module ClassMethods
+      def scry_permissions: () -> FilterPermissions
+      def scry_permissions=: (FilterPermissions) -> FilterPermissions
+      def add_filter_targets: (Symbol | String, **untyped) -> untyped
+      def targets_for: (Symbol | String) -> metadata
+      def target_model: (Symbol | String, String | Symbol) -> untyped?
+      def reset_filter_permissions: (*Symbol) -> untyped
+      def add_filter_permission: (Symbol, ?Symbol, ?metadata: metadata?, **untyped) ?{ (untyped) -> untyped } -> untyped
+      def add_custom_property_filter: (?Symbol, ?type: custom_property_type?, ?label: String?, ?predicates: untyped, ?metadata: metadata?) ?{ (untyped) -> untyped } -> untyped
+      def add_model_permission: (?Symbol) ?{ (untyped) -> bool? } -> untyped
+      def add_filter_scope: (?Symbol) ?{ (untyped) -> untyped } -> untyped
+      def add_filter_transform: (String | Symbol, ?Symbol, ?only: Array[Symbol], ?except: Array[Symbol], ?on: Symbol | Array[Symbol]) ?{ (untyped, untyped) -> untyped } -> untyped
+      def filter_property_permissions: (?untyped) -> untyped
+      def filter_association_permissions: (?untyped) -> untyped
+      def filter_predicate_permissions: (?untyped) -> metadata
+      def filter_capabilities: (?untyped, ?locale: Symbol | String) -> metadata
+      def model_allowed?: (?untyped) -> bool
+      def custom_property_filters: (?untyped) -> metadata
+    end
+  end
+
+  class FilterPermissions
+    def initialize: (klass: untyped) -> void
+    def []: (Symbol | String) -> FilterPermissionsChain
+    def deep_dup: (klass: untyped) -> instance
+    def reset_permissions: (*Symbol) -> untyped
+    def clear_caches!: () -> untyped
+    def model_allowed?: (untyped) -> bool
+    def allowed_properties: (untyped) -> untyped
+    def allowed_associations: (untyped) -> untyped
+    def allowed_association_targets: (Symbol | String, untyped) -> metadata
+    def allowed_order_properties: (untyped) -> untyped
+    def allowed_property_predicates: (untyped) -> metadata
+    def allowed_predicates: (untyped) -> Set[Symbol]
+    def allowed_expression_predicates: (untyped, Array[String | Symbol]) -> Set[Symbol]
+    def allowed_aggregate_predicates: (untyped, ?type: Symbol) -> untyped
+    def allowed_aggregates: (untyped) -> metadata
+    def aggregate_metadata: (untyped, ?locale: Symbol | String) -> metadata
+    def aggregate_predicates: (untyped) -> metadata
+    def allowed_custom_property_filters: (untyped) -> metadata
+    def custom_property_metadata: (untyped) -> metadata
+    def custom_property_entries: (untyped) -> metadata
+    def properties_with_labels: (untyped, ?locale: Symbol | String) -> Array[metadata]
+    def associations_with_labels: (untyped, ?locale: Symbol | String) -> Array[metadata]
+    def predicate_metadata: (untyped, ?locale: Symbol | String) -> metadata
+    def to_h: (?untyped, ?locale: Symbol | String) -> metadata
+  end
+
+  class FilterPermissionsChain
+    def initialize: (type: Symbol) -> void
+    attr_reader revision: Integer
+    def self.generation: () -> Integer
+    def self.invalidate!: () -> untyped
+    def add_permission: (metadata) -> untyped
+    def deep_dup: (?klass: untyped) -> instance
+    def permissions: () -> Enumerator[metadata, untyped]
+                   | () { (metadata) -> untyped } -> untyped
+    def reset_permissions: () -> untyped
+  end
+
+  module Filters
+    class Base
+      def initialize: (model: untyped, filter: filter_definition, context: untyped, ?depth: Integer) -> void
+      def with_path: (path) -> instance
+      def with_source: (untyped) -> instance
+      def with_selection_base_relation: (untyped) -> instance
+      def source_attribute: (Symbol | String) -> untyped
+      def source_relation: () -> untyped
+      def compile_nested_filter: (filter_definition filter_definition, ?index: Integer?, ?path: path?) -> Result
+      def apply: () -> Result
+      def filter: () -> filter_definition
+      def context: () -> untyped
+      def model: () -> untyped
+      def scope: () -> untyped
+      def depth: () -> Integer
+      def diagnostic_path: () -> path
+      def property: () -> Symbol?
+      def predicate: () -> Symbol?
+      def depth_exceeded?: () -> bool
+      def valid_property?: () -> bool
+      def valid_predicate?: () -> bool?
+      def valid_association?: () -> bool
+      def run_predicate: (untyped) -> untyped
+    end
+    class Group < Base
+    end
+    class Property < Base
+      def custom_property?: () -> bool
+    end
+    class Association < Base
+    end
+    class Aggregate < Base
+    end
+    class Computed < Base
+    end
+  end
+
+  module Middleware
+    class CacheClearer
+      def initialize: (untyped) -> void
+      def call: (untyped) -> untyped
+      def self.clear_current_thread!: () -> untyped
+    end
+  end
+end

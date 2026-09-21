@@ -1,0 +1,88 @@
+en:
+  # Library-level translations for the Scry filter system
+  scry:
+    predicates:
+      # Nil predicates
+      eq_nil: "is null"
+      not_eq_nil: "is not null"
+
+      # Equality predicates
+      eq: "equals"
+      eq_any: "equals any"
+      eq_all: "equals all"
+      not_eq: "does not equal"
+      not_eq_any: "does not equal any"
+      not_eq_all: "does not equal all"
+
+      # Numerical comparison predicates
+      between: "between"
+      not_between: "not between"
+      gt: "greater than"
+      lt: "less than"
+      gteq: "greater than or equal to"
+      lteq: "less than or equal to"
+
+      # Temporal predicates
+      within: "within"
+      within_next: "within next"
+      within_previous: "within previous"
+      not_within: "not within"
+      not_within_next: "not within next"
+      not_within_previous: "not within previous"
+
+      # Textual predicates
+      matches: "contains"
+      matches_any: "contains any"
+      matches_all: "contains all"
+      starts_with: "starts with"
+      starts_with_any: "starts with any"
+      starts_with_all: "starts with all"
+      ends_with: "ends with"
+      ends_with_any: "ends with any"
+      ends_with_all: "ends with all"
+      does_not_match: "does not contain"
+      does_not_match_any: "does not contain any"
+      does_not_match_all: "does not contain all"
+      does_not_start_with: "does not start with"
+      does_not_start_with_any: "does not start with any"
+      does_not_start_with_all: "does not start with all"
+      does_not_end_with: "does not end with"
+      does_not_end_with_any: "does not end with any"
+      does_not_end_with_all: "does not end with all"
+      matches_regexp: "matches pattern"
+      matches_regexp_any: "matches pattern any"
+      matches_regexp_all: "matches pattern all"
+      does_not_match_regexp: "does not match pattern"
+      does_not_match_regexp_any: "does not match pattern any"
+      does_not_match_regexp_all: "does not match pattern all"
+
+      # Boolean predicates
+      eq_true: "is true"
+      eq_false: "is false"
+
+      # JSON predicates
+      contains: "contains"
+      contains_any: "contains any"
+      contains_all: "contains all"
+
+      # Association predicates
+      has_any: "has any"
+      not_has_any: "does not have any"
+      has_all: "has all"
+      not_has_all: "does not have all"
+      only_has_any: "only has any"
+      only_has_all: "only has all"
+
+    filter_types:
+      property: "Property Filter"
+      association: "Association Filter"
+      aggregate: "Aggregate Filter"
+      group: "Group Filter"
+      not: "NOT Filter"
+
+    aggregates:
+      count: "Count"
+      sum: "Sum"
+      avg: "Average"
+      min: "Minimum"
+      max: "Maximum"

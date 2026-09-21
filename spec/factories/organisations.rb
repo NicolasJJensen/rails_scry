@@ -1,0 +1,8 @@
+# frozen_string_literal: true
+
+FactoryBot.define do
+  factory :organisation do
+    name { "Test Organisation" }
+    location { "New York, NY" }
+  end
+end

@@ -1,0 +1,20 @@
+# frozen_string_literal: true
+
+source 'https://rubygems.org'
+gemspec path: '..'
+
+rails_version = ENV.fetch('RAILS_VERSION')
+gem 'rails', "~> #{rails_version}.0"
+gem 'rspec-rails', Gem::Version.new(rails_version) < Gem::Version.new('7.2') ? '~> 6.0' : '~> 7.0'
+gem 'factory_bot_rails', '~> 6.0'
+gem 'faker', '~> 3.0'
+gem 'pg'
+gem 'sqlite3', Gem::Version.new(rails_version) < Gem::Version.new('8.0') ? '~> 1.4' : '~> 2.1'
+gem 'timecop', '~> 0.9'
+gem 'rake', '~> 13.0'
+gem 'rubocop', '~> 1.21', require: false
+# Rails JSON encoding in these test bundles uses options removed by JSON 3.
+gem 'json', '< 3'
+
+gem 'pundit', '~> 2.5', require: false
+gem 'rbs', '~> 3.4', require: false
