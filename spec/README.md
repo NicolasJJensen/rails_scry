@@ -32,10 +32,10 @@ reorganization. The five registry `freeze!` examples and the ScopeEvaluator spec
 legacy APIs; the remaining 223 round examples were retained.
 The relation-composition and permission-resolution batches now live in `regressions/relation_composition_spec.rb` and `regressions/permission_resolution_spec.rb`. Their fixtures and assertions are preserved, with the error metadata expectation extended for the new discovery fields. The remaining `round*_coverage_spec.rb` files stay in place for gradual migration as their contracts change.
 
-The standalone runner exercises adapter behavior without a Rails application. See the main README for its isolated bundle commands.
+The standalone runner exercises adapter behavior without a Rails application. See [CONTRIBUTING.md](../CONTRIBUTING.md) for its isolated bundle commands.
 PostgreSQL-specific tests use temporary tables inside fixture transactions. Subprocess adapter tests use separate in-memory SQLite databases.
 
-The shared review regressions live in `support/interoperability_boundaries.rb`, which includes `support/candidate_projection_contracts.rb`. The PostgreSQL suite includes them through `scry/interoperability/review_boundaries_spec.rb`. Run them without Rails using `RAILS_VERSION=8.1 SCRY_ADAPTER=sqlite3 ruby script/adapter_regressions.rb`; the adapter bundle commands are documented in the main README. Select `mysql2` or `postgresql` for the other adapters. MySQL requires an isolated test database and uses ordinary fixture tables with cleanup.
+The shared review regressions live in `support/interoperability_boundaries.rb`, which includes `support/candidate_projection_contracts.rb`. The PostgreSQL suite includes them through `scry/interoperability/review_boundaries_spec.rb`. Run them without Rails using `RAILS_VERSION=8.1 SCRY_ADAPTER=sqlite3 ruby script/adapter_regressions.rb`; the adapter bundle commands are documented in [CONTRIBUTING.md](../CONTRIBUTING.md). Select `mysql2` or `postgresql` for the other adapters. MySQL requires an isolated test database and uses ordinary fixture tables with cleanup.
 
 The original 21 review regression examples produced 20 failures before fixes (the missing valid ID control already passed). Later regressions cover extension validation, composed application scopes, serializers, and issues found during final review.
 
