@@ -14,7 +14,7 @@ RSpec.shared_examples 'association operand contracts' do
     result = Scry.filter_records_by(records: @child, filter: boundary_group(node))
 
     expect(result.diagnostics.map(&:message)).to include(match(/expects 1 argument/))
-    expect(result.diagnostics.map(&:path)).to include([:filters, 0])
+    expect(result.diagnostics.map(&:path)).to include([:filters, 0, :args])
   end
 
   it 'rejects equality operands instead of reinterpreting them as membership' do

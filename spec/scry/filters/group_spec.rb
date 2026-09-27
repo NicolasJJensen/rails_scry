@@ -246,7 +246,7 @@ RSpec.describe Scry::Filters::Group do
       )
 
       expect(result.diagnostics).to contain_exactly(
-        have_attributes(code: :unknown_filter_type, path: [:child])
+          have_attributes(code: :unknown_filter_type, path: [:child, :type])
       )
     end
 
@@ -292,7 +292,7 @@ RSpec.describe Scry::Filters::Group do
             expect(result.relation).to be_empty
           end
           expect(result.diagnostics).to contain_exactly(
-            have_attributes(code: :unknown_filter_type, path: [:child, :filters, 1])
+            have_attributes(code: :unknown_filter_type, path: [:child, :filters, 1, :type])
           )
         end
       end
@@ -335,7 +335,7 @@ RSpec.describe Scry::Filters::Group do
           expect(error.result).to be_partial
           expect(error.result.relation).to contain_exactly(matching)
           expect(error.result.diagnostics).to contain_exactly(
-            have_attributes(code: :unknown_filter_type, path: [:child, :filters, 1])
+            have_attributes(code: :unknown_filter_type, path: [:child, :filters, 1, :type])
           )
         }
       end

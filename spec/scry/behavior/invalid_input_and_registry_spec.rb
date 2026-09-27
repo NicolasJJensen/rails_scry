@@ -95,8 +95,9 @@ RSpec.describe 'round28' + ' - ' + 'Association filter with missing :predicate k
         expect(Rails.logger).to receive(:warn) do |payload|
           event = JSON.parse(payload)
           expect(event).to include(
-            'code' => 'missing_association',
-            'message' => 'Scry: association requires an association and predicate'
+            'code' => 'missing_predicate',
+            'message' => 'Scry: association requires a predicate',
+            'path' => ['predicate']
           )
         end
 
@@ -111,7 +112,7 @@ RSpec.describe 'round28' + ' - ' + 'Association filter with missing :predicate k
 
       it 'raises a FilterError' do
         expect { Scry.filter_records_by(records: User, filter: filter, context: nil) }.to raise_error(
-          Scry::FilterError, /association requires an association and predicate/
+          Scry::FilterError, /association requires a predicate/
         )
       end
     end
@@ -498,7 +499,7 @@ RSpec.describe 'round29' + ' - ' + 'Aggregate filter with missing predicate' do
 
       it 'raises a FilterError' do
         expect { Scry.filter_records_by(records: User, filter: filter, context: nil) }.to raise_error(
-          Scry::FilterError, /aggregate requires an association and predicate/
+          Scry::FilterError, /aggregate requires a predicate/
         )
       end
     end

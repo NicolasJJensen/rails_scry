@@ -119,7 +119,7 @@ module Scry
         configuration.filter_class_mappings[filter_type]
       end
       unless filter_class
-        return Result.failure(relation: records, message: "Scry: unknown filter type #{Input.identifier_label(filter_type)}", code: :unknown_filter_type)
+        return Result.failure(relation: records, message: "Scry: unknown filter type #{Input.identifier_label(filter_type)}", code: :unknown_filter_type, path: [:type])
       end
       result = filter_class.new(model: records, filter: normalized, context: context, depth: 0).apply
       return result if filter_class == Filters::Group

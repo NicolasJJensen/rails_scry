@@ -17,6 +17,7 @@ Scry supports property comparisons, AND/OR groups, association membership, aggre
 
 - [Installation](#installation)
 - [Basic usage](#basic-usage)
+  - [JSON, HTML, and Turbo responses](#json-html-and-turbo-responses)
 - [Permissions and context](#permissions-and-context)
 - [Handling invalid filters](#handling-invalid-filters)
 - [Building filters](#building-filters)
@@ -78,47 +79,49 @@ Filters are Ruby hashes or parsed JSON objects with string keys. `args` contains
 
 By default, invalid filter nodes are skipped and valid nodes still apply. Inspect the result before deciding how to respond; [invalid-filter handling](#handling-invalid-filters) explains the alternatives.
 
-For a Rails JSON endpoint, a request can contain:
+### JSON, HTML, and Turbo responses
 
-```json
-{
-  "filter": {
-    "type": "property",
-    "property": "first_name",
-    "predicate": "eq",
-    "args": ["Alice"]
-  }
-}
-```
+Scry returns the same relation and diagnostics for every response format. After
+filtering, a Rails action can assign the result to its views and choose how to
+respond:
 
 ```ruby
-class UsersController < ApplicationController
-  def index
-    filter_params = params.require(:filter)
-    unless filter_params.is_a?(ActionController::Parameters)
-      return render json: { error: "filter must be an object" }, status: :bad_request
-    end
+@filter = filter
+@result = result
+@users = result.success? ? result.relation : result.relation.none
+@errors_by_path = result.diagnostics.group_by(&:path)
+status = result.success? ? :ok : :unprocessable_entity
 
-    result = Scry.filter_records_by(
-      records: User.where(organisation: current_organisation),
-      filter: filter_params.to_unsafe_h,
-      context: current_user
-    )
-
+respond_to do |format|
+  format.html { render :index, status: status }
+  format.turbo_stream { render :index, status: status }
+  format.json do
     if result.success?
-      render json: result.relation.as_json(only: [:id, :first_name])
+      render json: @users.as_json(only: [:id, :first_name])
     else
-      render json: { errors: result.diagnostics.map(&:to_h) }, status: :unprocessable_entity
+      render json: { errors: result.diagnostics.map(&:to_h) }, status: status
     end
   end
 end
 ```
 
-Here `to_unsafe_h` passes the nested filter language to Scry for validation and permission checks. Use that hash only as a filter payload. The example rejects partial and failed filters rather than returning partially filtered results, and explicitly selects response fields. Configure filter permissions as shown next.
+- **HTML:** Render the filter form, submitted values, errors, and results in `index.html.erb`.
+- **Turbo Frames:** Return HTML containing the same frame ID on success and failure. Put the form, errors, and results inside that frame so they update together. A frame request does not need a Turbo Stream response.
+- **Turbo Streams:** Render `index.turbo_stream.erb` to replace the search area. A GET form must opt into stream responses with `data-turbo-stream`.
+- **JSON:** Return selected record fields on success, or structured diagnostics on failure.
+
+This example rejects partial and failed filters with a 422 response. Show an error
+summary and mark affected controls invalid; only show “No users found” after a
+successful query with zero matches. Keep submitted inputs available for correction.
+
+The [Rails response guide](docs/rails-responses.md) includes the complete controller,
+HTML form, field-error helper, matching Turbo Frame, and Turbo Stream template. It
+also handles the initial page load, malformed parameters, and `:raise` policy.
+Turbo examples assume the host application has Turbo installed.
 
 ## Permissions and context
 
-By default, Scry makes model columns and associations available for filtering, subject to its built-in exclusions and predicate applicability. Restrict the capabilities you want to expose:
+By default, Scry exposes eligible model properties for filtering. **ActiveRecord-declared encrypted attributes and `belongs_to` foreign-key columns are excluded.** Associations are available only when their target models support Scry and allow filtering; polymorphic associations require registered targets. Scry does not infer that other columns are sensitive from their names. Use permissions to further restrict the available properties, associations, and predicates:
 
 ```ruby
 class User < ApplicationRecord
@@ -178,6 +181,12 @@ A UI can validate a filter without selecting matching records:
 diagnostics = Scry.validate_filter(model: User, filter: filter, context: current_user)
 errors = diagnostics.map(&:to_h)
 ```
+
+Each diagnostic's `path` identifies its location in the filter payload. For
+example, `[:filters, 1, :property]` points to the second filter's property selector,
+while `[:filters, 1, :args, 0]` points to its first value input. Use these paths to
+display errors beside the affected controls and mark them invalid. See
+[field-level errors](docs/configuration.md#field-level-errors) for a Rails example.
 
 ## Building filters
 
@@ -294,6 +303,7 @@ Configure settings and extensions during boot. Rails locks scalar settings after
 
 | Guide | Topics |
 |---|---|
+| [Rails responses](docs/rails-responses.md) | JSON, HTML, Turbo Frames and Streams, preserved form values, and field errors |
 | [Filters](docs/filters.md) | Complete payload formats, computed expressions, association and aggregate behavior |
 | [Predicates](docs/predicates.md) | Built-in comparisons, argument shapes, adapter-specific support |
 | [Permissions](docs/permissions.md) | Context, mandatory scopes, strict mode, list semantics and precedence |

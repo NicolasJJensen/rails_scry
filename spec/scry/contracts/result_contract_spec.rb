@@ -68,7 +68,7 @@ RSpec.describe 'filter results', :interoperability do
     expect(result).to be_partial
     expect(result.relation).to contain_exactly(user)
     expect(result.diagnostics.map(&:code)).to include(:property_denied)
-    expect(result.diagnostics.map(&:path)).to include([:filters, 1])
+    expect(result.diagnostics.map(&:path)).to include([:filters, 1, :property])
   end
 
   it 'replaces only the relation while preserving immutable result state' do

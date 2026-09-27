@@ -1,6 +1,6 @@
 # ActiveRecord and Rails integration
 
-Setup, Rails lifecycle behavior, labels, and cache management. See the [README](../README.md) for an introduction.
+Setup, Rails lifecycle behavior, labels, and cache management. See the [README](../README.md) for an introduction and [Rails responses](rails-responses.md) for JSON, HTML, Turbo, and form-error examples.
 
 ## Contents
 

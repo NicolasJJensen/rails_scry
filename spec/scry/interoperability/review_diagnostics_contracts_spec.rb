@@ -8,7 +8,7 @@ RSpec.describe 'Review diagnostic and invalid-tree contracts', :interoperability
 
   it 'identifies malformed and unknown children by their complete paths' do
     result = Scry.filter_records_by(records: User, filter: group(123, {type: 'unknown'}))
-    expect(result.diagnostics.map(&:path)).to eq([[:filters, 0], [:filters, 1]])
+    expect(result.diagnostics.map(&:path)).to eq([[:filters, 0], [:filters, 1, :type]])
   end
 
   %w[association aggregate].each do |kind|
@@ -17,7 +17,7 @@ RSpec.describe 'Review diagnostic and invalid-tree contracts', :interoperability
       node = {type: kind, association: 'users', predicate: kind == 'association' ? 'has_any' : 'gteq', args:,
         scoping: group(invalid)}
       result = Scry.filter_records_by(records: Organisation, filter: group(group(node)))
-      expect(result.diagnostics.map(&:path)).to eq([[:filters, 0, :filters, 0, :scoping, :filters, 0]])
+      expect(result.diagnostics.map(&:path)).to eq([[:filters, 0, :filters, 0, :scoping, :filters, 0, :property]])
     end
   end
 

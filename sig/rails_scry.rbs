@@ -251,6 +251,7 @@ module Scry
       def scope: () -> untyped
       def depth: () -> Integer
       def diagnostic_path: () -> path
+      def field_path: (*(Symbol | String | Integer)) -> path
       def property: () -> Symbol?
       def predicate: () -> Symbol?
       def depth_exceeded?: () -> bool

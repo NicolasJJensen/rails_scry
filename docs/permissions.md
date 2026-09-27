@@ -81,7 +81,9 @@ discovery exposes only targets allowed for the current context:
 Comment.add_filter_targets(:commentable, post: Post, photo: Photo)
 ```
 
-**Default behavior:** Without any permissions configured, model columns and associations are filterable with applicable predicates, subject to built-in exclusions such as encrypted and foreign-key properties. Use permissions to restrict access.
+**Default behavior:** Eligible model properties are filterable with applicable predicates. ActiveRecord-declared encrypted attributes and foreign-key columns used by `belongs_to` associations are excluded from the property universe, including composite foreign keys. An `includelist` cannot re-enable these excluded properties. Column names alone do not identify sensitive fields: an ordinary column named `password_digest` or `reset_password_token` still needs an explicit restriction.
+
+Associations are available only when the target model includes `Scry::Filterable` and its model permission allows access. Polymorphic associations also need a registered target that meets those conditions. Use property, association, and predicate permissions to narrow these defaults.
 
 Permissions declared on a model are copied to Active Record subclasses when the subclass is created. The subclass can
 then add rules or reset one permission chain without changing its parent or sibling classes:

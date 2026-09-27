@@ -144,7 +144,7 @@ RSpec.describe 'validation contracts' do
 
       expect(result).to be_failed
       expect(result.diagnostics).to contain_exactly(
-        have_attributes(code: :unknown_filter_type, path: [])
+        have_attributes(code: :unknown_filter_type, path: [:type])
       )
     end
   end

@@ -7,25 +7,25 @@ module Scry
         return failure_from_reported_error if depth_exceeded?
         return failure("Scry: property filter must be a Hash", code: :invalid_property_filter) unless @filter.is_a?(Hash)
         unless @filter[:property]
-          return failure("Scry: filter has missing :property key", code: :missing_property)
+          return failure("Scry: filter has missing :property key", path: field_path(:property), code: :missing_property)
         end
 
         unless @filter[:predicate]
-          return failure("Scry: filter has missing :predicate key", code: :missing_predicate)
+          return failure("Scry: filter has missing :predicate key", path: field_path(:predicate), code: :missing_predicate)
         end
 
         unless valid_property?
-          return failure("Scry: invalid property: #{Input.identifier_label(@filter[:property])}", category: :permission_denied, code: :property_denied, relation: @scope.none)
+          return failure("Scry: invalid property: #{Input.identifier_label(@filter[:property])}", path: field_path(:property), category: :permission_denied, code: :property_denied, relation: @scope.none)
         end
 
         unless valid_predicate?
-          return failure("Scry: invalid predicate: #{Input.identifier_label(@filter[:predicate])}, for the property: #{Input.identifier_label(@filter[:property])}", category: :permission_denied, code: :predicate_denied, relation: @scope.none)
+          return failure("Scry: invalid predicate: #{Input.identifier_label(@filter[:predicate])}, for the property: #{Input.identifier_label(@filter[:property])}", path: field_path(:predicate), category: :permission_denied, code: :predicate_denied, relation: @scope.none)
         end
 
         result = if custom_property?
           custom_filter = @model.custom_property_filters(@context)[property]
           unless custom_filter
-            return failure("Scry: custom property filter #{property.inspect} returned nil", code: :invalid_custom_property)
+            return failure("Scry: custom property filter #{property.inspect} returned nil", path: field_path(:property), code: :invalid_custom_property)
           end
           # Re-enter through the caller scope so custom expansion cannot widen
           # the relation that the host authorized.
@@ -48,7 +48,7 @@ module Scry
           )
         else
           pred_obj = Scry.configuration.predicate_registry.by_name(predicate)
-          return failure("Scry: unknown predicate #{predicate.inspect}", code: :unknown_predicate) unless pred_obj
+          return failure("Scry: unknown predicate #{predicate.inspect}", path: field_path(:predicate), code: :unknown_predicate) unless pred_obj
 
           run_predicate(predicate_args(pred_obj))
         end
@@ -69,11 +69,11 @@ module Scry
       end
 
       def property
-        @_property ||= safe_to_sym(@filter[:property])
+        @_property ||= safe_to_sym(@filter[:property], field: :property)
       end
 
       def predicate
-        @_predicate ||= safe_to_sym(@filter[:predicate])
+        @_predicate ||= safe_to_sym(@filter[:predicate], field: :predicate)
       end
 
     end

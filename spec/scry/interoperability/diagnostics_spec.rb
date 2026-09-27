@@ -10,7 +10,7 @@ RSpec.describe 'Input limits and diagnostics', :interoperability do
       group(property('missing_property', 'eq', 'secret'))
     ))
     expect(result.relation.ids).to eq([match.id])
-    expect(result.diagnostics.map(&:path)).to eq([[:filters, 1, :filters, 0]])
+    expect(result.diagnostics.map(&:path)).to eq([[:filters, 1, :filters, 0, :property]])
     expect(result.diagnostics.first.category).to eq(:permission_denied)
     expect(result.diagnostics.first.code).to eq(:property_denied)
     expect(result.diagnostics).to be_frozen
@@ -40,7 +40,7 @@ RSpec.describe 'Input limits and diagnostics', :interoperability do
     result = Scry.filter_records_by(records: User, context: {token: 'context-secret'},
       filter: group(property('first_name', 'broken_value', 'input-secret')))
     expect(result.diagnostics.first.message).to match(/formatter callback failed/)
-    expect(stream.string).to include('"source":"Scry"', '"path":["filters",0]')
+    expect(stream.string).to include('"source":"Scry"', '"path":["filters",0,"args",0]')
     expect(stream.string).not_to include('context-secret', 'input-secret')
     expect(result.diagnostics.map(&:message).join).not_to include('input-secret', 'context-secret')
   end

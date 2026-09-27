@@ -11,38 +11,51 @@ module Scry
 
     module_function
 
-    def compile(model, expression, allowed_properties:, source: nil)
+    def compile(model, expression, allowed_properties:, source: nil, path: nil)
       unless expression.is_a?(Hash)
+        return invalid_expression('Scry: expression must be a Hash', path) if path
         raise Scry::InvalidOperandError, 'Scry: expression must be a Hash'
       end
       if expression.key?(:property) || expression.key?('property')
         property = (expression[:property] || expression['property']).to_s
         unless allowed_properties.include?(property.to_sym)
-          raise Scry::FilterError, "Scry: invalid property: #{Input.identifier_label(property)}"
+          message = "Scry: invalid property: #{Input.identifier_label(property)}"
+          return invalid_expression(message, [*path, :property]) if path
+          raise Scry::FilterError, message
         end
         return (source || model.arel_table)[property]
       end
       if expression.key?(:literal) || expression.key?('literal')
         value = expression[:literal] || expression['literal']
         unless value.is_a?(Numeric) && value.finite?
-          raise Scry::InvalidOperandError, 'Scry: numeric expression literals must be finite'
+          message = 'Scry: numeric expression literals must be finite'
+          return invalid_expression(message, [*path, :literal]) if path
+          raise Scry::InvalidOperandError, message
         end
         return Arel::Nodes.build_quoted(value)
       end
 
       operator = (expression[:operator] || expression['operator']).to_s
       symbol = OPERATORS[operator]
-      raise Scry::InvalidOperandError, "Scry: invalid expression operator #{operator.inspect}" unless symbol
+      unless symbol
+        message = "Scry: invalid expression operator #{operator.inspect}"
+        return invalid_expression(message, [*path, :operator]) if path
+        raise Scry::InvalidOperandError, message
+      end
       operands = expression[:operands] || expression['operands']
       unless operands.is_a?(Array) && operands.length == 2
-        raise Scry::InvalidOperandError, "Scry: #{operator} requires exactly two operands"
+        message = "Scry: #{operator} requires exactly two operands"
+        return invalid_expression(message, [*path, :operands]) if path
+        raise Scry::InvalidOperandError, message
       end
-      left = compile(model, operands[0], allowed_properties:, source:)
-      right = compile(model, operands[1], allowed_properties:, source:)
+      left = compile(model, operands[0], allowed_properties:, source:, path: path && [*path, :operands, 0])
+      right = compile(model, operands[1], allowed_properties:, source:, path: path && [*path, :operands, 1])
       left = Arel::Nodes::Grouping.new(left) if expression_node?(operands[0])
       right = Arel::Nodes::Grouping.new(right) if expression_node?(operands[1])
       if operator == 'divide' && literal_zero?(operands[1])
-        raise Scry::InvalidOperandError, 'Scry: division by zero is not allowed'
+        message = 'Scry: division by zero is not allowed'
+        return invalid_expression(message, [*path, :operands, 1, :literal]) if path
+        raise Scry::InvalidOperandError, message
       end
       if operator == 'divide'
         right = Arel::Nodes::NamedFunction.new('NULLIF', [right, Arel::Nodes.build_quoted(0)])
@@ -53,6 +66,15 @@ module Scry
         left = Compatibility.cast(left, sql_type) if sql_type
       end
       Arel::Nodes::InfixOperation.new(symbol, left, right)
+    end
+
+    def invalid_expression(message, path)
+      raise Scry::ReportedError, Scry::Diagnostic.new(
+        category: :invalid_filter,
+        code: :invalid_filter,
+        path:,
+        message:
+      )
     end
 
     def result_type(model, expression)

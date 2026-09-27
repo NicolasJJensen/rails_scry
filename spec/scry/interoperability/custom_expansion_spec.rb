@@ -20,7 +20,7 @@ RSpec.describe "Custom property DSL expansion", :interoperability do
     result = Scry.filter_records_by(records: User, filter: group(group(property("broken", "eq_true"))))
 
     expect(result.diagnostics.length).to eq(1)
-    expect(result.diagnostics.first.path).to eq([:filters, 0, :filters, 0])
+    expect(result.diagnostics.first.path).to eq([:filters, 0, :filters, 0, :filters])
     expect(result.diagnostics.first.message).to include("non-array :filters")
   end
 

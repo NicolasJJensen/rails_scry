@@ -5,6 +5,7 @@ Settings, result contracts, diagnostics, and lifecycle rules. See the [README](.
 ## Contents
 
 - [Configuration](#configuration)
+- [Field-level errors](#field-level-errors)
 
 ## Configuration
 
@@ -41,7 +42,7 @@ Use validation when a UI or API needs to report rejected filter nodes before it 
 ```ruby
 diagnostics = Scry.validate_filter(model: User, filter: filter, context: current_user)
 diagnostics.map(&:to_h)
-# => [{ code: :permission_denied, path: [:filters, 0], message: "..." }, ...]
+# => [{ code: :property_denied, path: [:filters, 0, :property], message: "..." }, ...]
 ```
 
 `filter_records_by` returns the relation and diagnostics together:
@@ -117,3 +118,87 @@ when the block raises. Standalone users may call
 `Scry.configuration.lock_settings!` after boot configuration is complete.
 Permission callbacks and their request contexts remain dynamic and are not
 affected by scalar configuration locking.
+
+## Field-level errors
+
+`Diagnostic#path` follows keys and array indexes in the submitted filter. It
+starts at the filter object, not at the surrounding request's `filter` key.
+
+| Path | Origin |
+|---|---|
+| `[:property]` | The root filter's property selector |
+| `[:filters, 1, :predicate]` | The second child filter's predicate selector |
+| `[:filters, 1, :args]` | The second child's argument list or argument count |
+| `[:filters, 1, :args, 0]` | Its first argument |
+| `[:scoping, :filters, 0, :property]` | A property in an association or aggregate's nested scope |
+| `[:expression, :operands, 1, :literal]` | A literal in a computed expression |
+| `[:order, 0, :direction]` | The first ordering rule's direction |
+
+Paths use the actual payload keys: built-in value inputs live in `args`, so their
+paths use `:args` and an index rather than `:value`. Symbol keys become strings
+when diagnostics are encoded as JSON. The Ruby path array is immutable.
+
+Malformed filter nodes retain the path to that node. Whole-request limits and
+failures that cannot be attributed to an input control, such as root model
+permissions or mandatory model scopes, can have an empty path. Keep a form-level
+error summary for those failures. Errors inside custom property expansions can
+include the generated filter tree's path; applications exposing those properties
+as a single control should display those errors beside that control.
+
+For Rails HTML or Turbo Frame responses, keep the submitted filter hash and group
+the diagnostics before rendering the form again:
+
+```ruby
+@filter = filter
+@errors_by_path = result.diagnostics.group_by(&:path)
+```
+
+For a root property filter, mark its first argument input and associate it with
+both argument-list errors and errors on that particular value:
+
+```erb
+<% errors = @errors_by_path.fetch([:args, 0], []) +
+            @errors_by_path.fetch([:args], []) %>
+<% args = @filter[:args] || @filter["args"] %>
+<% value = args.is_a?(Array) ? args.first : args %>
+
+<%= label_tag "filter_value", "Value" %>
+<%= text_field_tag "filter[args][]", value,
+                   id: "filter_value",
+                   class: ("is-invalid" if errors.any?),
+                   aria: { invalid: errors.any?,
+                           describedby: ("filter_value_errors" if errors.any?) } %>
+<% if errors.any? %>
+  <ul id="filter_value_errors">
+    <% errors.each do |error| %>
+      <li><%= error.message %></li>
+    <% end %>
+  </ul>
+<% end %>
+```
+
+The CSS class is application-defined. Apply the same pattern to `[:property]` and
+`[:predicate]` for their selectors. For nested filters, prepend the complete node
+path, such as `[:filters, 1]`. Keep a summary for diagnostics without a matching
+control, including errors on the whole filter.
+
+The [Rails response guide](rails-responses.md) provides a complete form and reusable
+helper for these bindings. Its form submits real argument arrays with `args[]`.
+A dynamic group builder should serialize `filters` as an array too: Rails numeric
+parameter names such as `filter[filters][0]` produce a hash, not Scry's `filters`
+array. Normalize that form structure in the application or send the filter as JSON.
+
+Render errors and inputs inside the same Turbo Frame to update their messages and
+invalid state together, preserving submitted values. Error paths do not change the
+selected invalid-filter policy.
+
+Custom filter classes can attach a failure to their own input fields:
+
+```ruby
+failure('Scry: invalid value', code: :invalid_value, path: field_path(:value))
+```
+
+`field_path` appends the field to the current filter's nested path. Existing custom
+filters that omit `path:` continue to report errors at the filter node. Consumers
+that previously matched complete node-only paths should update their field mapping
+or match the node's path prefix.

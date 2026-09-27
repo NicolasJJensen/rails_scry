@@ -8,6 +8,7 @@ module Scry
       VALID_IDENTIFIER = /\A[a-zA-Z_]\w*[?!]?\z/
       PIPELINE_FAILED = Object.new.freeze
       NATIVE_AREL_PREDICATES = %i[eq not_eq gt lt gteq lteq matches does_not_match].freeze
+      ASSOCIATION_MEMBERSHIP_PREDICATES = %i[has_any not_has_any has_all not_has_all only_has_any only_has_all].freeze
 
       def initialize(model:, filter:, context:, depth: 0)
         if model.is_a?(ActiveRecord::Relation)
@@ -57,7 +58,7 @@ module Scry
       end
 
       def predicate
-        @_predicate ||= safe_to_sym(@filter[:predicate])
+        @_predicate ||= safe_to_sym(@filter[:predicate], field: :predicate)
       end
 
       def property
@@ -84,7 +85,7 @@ module Scry
         end
 
         klass = Scry.configuration.filter_class_mappings[filter_definition[:type]]
-        return failure('Scry: unknown filter type', path: nested_path, code: :unknown_filter_type) unless klass
+        return failure('Scry: unknown filter type', path: [*nested_path, :type], code: :unknown_filter_type) unless klass
 
         branch_scope = @scope.except(:order, :limit, :offset)
         selection_base_relation = @selection_base_relation || branch_scope
@@ -128,7 +129,7 @@ module Scry
 
       def run_predicate(args)
         predicate_obj = Scry.configuration.predicate_registry.by_name(predicate)
-        return handle_error("Scry: unknown predicate #{predicate.inspect}") unless predicate_obj
+        return handle_error("Scry: unknown predicate #{predicate.inspect}", path: field_path(:predicate)) unless predicate_obj
         validate_predicate_args!(predicate_obj, args)
 
         tokens = [predicate]
@@ -156,14 +157,22 @@ module Scry
         will_use_nodes = !raw_custom_operand && (transforms[:value_node].present? || predicate_obj[:adapters] || prepared_args || json_property)
         structured_operand = json_property || !predicate.to_s.end_with?('_any', '_all')
         node_args = prepared_args || if json_property && predicate.to_s.end_with?('_any', '_all')
-          [Array(args.first).map { |value| to_arel_node(value, attribute: attr, structured: true) }]
+          [Array(args.first).each_with_index.map do |value, index|
+            with_error_path(:args, 0, index) { to_arel_node(value, attribute: attr, structured: true) }
+          end]
         else
-          args.map do |value|
-            value = Array.wrap(value) if native && Compatibility.property_type(@model, property) == :array && predicate.to_s.start_with?('array_')
-            native ? Compatibility.native_operand(@model, property, predicate, value, attr) : to_arel_node(value, attribute: attr, structured: structured_operand)
+          args.each_with_index.map do |value, index|
+            with_error_path(:args, index) do
+              value = Array.wrap(value) if native && Compatibility.property_type(@model, property) == :array && predicate.to_s.start_with?('array_')
+              native ? Compatibility.native_operand(@model, property, predicate, value, attr) : to_arel_node(value, attribute: attr, structured: structured_operand)
+            end
           end
         end
-        node_args = node_args.map { |node| apply_value_node_transforms(node, transforms[:value_node]) } if will_use_nodes
+        if will_use_nodes
+          node_args = node_args.each_with_index.map do |node, index|
+            with_error_path(:args, index) { apply_value_node_transforms(node, transforms[:value_node]) }
+          end
+        end
 
         attr = source_attribute(property)
         if Compatibility.adapter(@model) == 'postgresql' && Compatibility.property_type(@model, property).to_s == 'json'
@@ -201,6 +210,31 @@ module Scry
         @path || []
       end
 
+      def field_path(*parts)
+        [*diagnostic_path, *parts]
+      end
+
+      def diagnostic_error_path
+        @error_path || diagnostic_path
+      end
+
+      def with_error_path(*parts, &block)
+        with_diagnostic_path(field_path(*parts), &block)
+      end
+
+      def with_diagnostic_path(path)
+        # Nested filters still need the node path, without this operation's field suffix.
+        previous_path = @error_path
+        @error_path = path
+        yield
+      rescue Scry::ReportedError, Scry::ModelScopeError
+        raise
+      rescue Scry::FilterError => error
+        handle_error(error.message)
+      ensure
+        @error_path = previous_path
+      end
+
       def success(relation)
         Scry::Result.success(relation)
       end
@@ -209,7 +243,7 @@ module Scry
         Scry::Result.partial(relation, diagnostics:)
       end
 
-      def failure(message, category: :invalid_filter, code: :invalid_filter, relation: @scope, path: @path || [])
+      def failure(message, category: :invalid_filter, code: :invalid_filter, relation: @scope, path: diagnostic_error_path)
         Scry::Result.failure(
           relation:,
           message:,
@@ -225,13 +259,13 @@ module Scry
         Scry::Result.new(status: :failed, relation:, diagnostics: [error.diagnostic])
       end
 
-      def handle_error(message, path: @path || [], code: :invalid_filter)
+      def handle_error(message, path: diagnostic_error_path, code: :invalid_filter)
         diagnostic = Scry::Diagnostic.new(category: :invalid_filter, code:, path:, message:)
         raise Scry::ReportedError, diagnostic
       end
 
       def handle_permission_denial(message)
-        diagnostic = Scry::Diagnostic.new(category: :permission_denied, code: :permission_denied, path: @path || [], message:)
+        diagnostic = Scry::Diagnostic.new(category: :permission_denied, code: :permission_denied, path: diagnostic_error_path, message:)
         raise Scry::ReportedError, diagnostic
       end
 
@@ -279,7 +313,7 @@ module Scry
       def predicate_args(definition)
         args = @filter.key?(:args) ? @filter[:args] : []
         unless args.is_a?(Array)
-          handle_error('Scry: predicate args must be an Array', code: :invalid_filter_args)
+          handle_error('Scry: predicate args must be an Array', code: :invalid_filter_args, path: field_path(:args))
         end
         validate_predicate_args!(definition, args)
         args
@@ -291,7 +325,7 @@ module Scry
         unless args.is_a?(Array) && args.length >= minimum && (maximum.nil? || args.length <= maximum)
           handle_error(
             "Scry: predicate #{predicate.inspect} expects #{argument_requirement(definition)}",
-            code: :invalid_filter_args
+            code: :invalid_filter_args, path: field_path(:args)
           )
         end
       end
@@ -307,30 +341,34 @@ module Scry
 
       def prepare_predicate_arguments(definition, args, transforms: nil, array_aware: false, property_range: false, validate_shape: true)
         validate_predicate_args!(definition, args)
-        args.map do |value|
-          validate_operand_shape!(definition, value) if validate_shape
-          value = apply_predicate_validator(definition, value)
-          return PIPELINE_FAILED if value.equal?(PIPELINE_FAILED)
-          value = apply_value_transforms(value, transforms[:value]) if transforms
-          value = apply_predicate_formatter(definition, value, array_aware:)
-          return PIPELINE_FAILED if value.equal?(PIPELINE_FAILED)
-          property_range && value.is_a?(Range) ? Compatibility.property_range(@model, property, value) : value
+        args.each_with_index.map do |value, index|
+          with_error_path(:args, index) do
+            validate_operand_shape!(definition, value) if validate_shape
+            value = apply_predicate_validator(definition, value)
+            return PIPELINE_FAILED if value.equal?(PIPELINE_FAILED)
+            value = apply_value_transforms(value, transforms[:value]) if transforms
+            value = apply_predicate_formatter(definition, value, array_aware:)
+            return PIPELINE_FAILED if value.equal?(PIPELINE_FAILED)
+            property_range && value.is_a?(Range) ? Compatibility.property_range(@model, property, value) : value
+          end
         end
       end
 
       def prepare_registered_arguments(definition, args)
         return nil unless definition[:prepare_arguments]
 
-        prepared = invoke_extension('predicate argument preparation') do
-          definition[:prepare_arguments].call(args)
+        with_error_path(:args) do
+          prepared = invoke_extension('predicate argument preparation') do
+            definition[:prepare_arguments].call(args)
+          end
+          unless prepared.is_a?(Array)
+            handle_error('Scry: predicate argument preparation must return an Array', code: :invalid_prepared_arguments)
+          end
+          if prepared.any? { |value| arel_operand?(value) }
+            handle_error('Scry: predicate argument preparation must return Ruby values', code: :invalid_prepared_arguments)
+          end
+          prepared
         end
-        unless prepared.is_a?(Array)
-          handle_error('Scry: predicate argument preparation must return an Array', code: :invalid_prepared_arguments)
-        end
-        if prepared.any? { |value| arel_operand?(value) }
-          handle_error('Scry: predicate argument preparation must return Ruby values', code: :invalid_prepared_arguments)
-        end
-        prepared
       end
 
       def arel_operand?(value, seen = {})
@@ -363,7 +401,9 @@ module Scry
         end
       end
 
-      def safe_to_sym(str)
+      def safe_to_sym(str, field: nil)
+        return with_error_path(field) { safe_to_sym(str) } if field
+
         str = str.to_s
         if str.length > MAX_IDENTIFIER_LENGTH
           return handle_error("Scry: identifier too long (#{str.length} chars, max #{MAX_IDENTIFIER_LENGTH}): #{str[0, 50].inspect}")
@@ -382,13 +422,21 @@ module Scry
       def apply_predicate_formatter(predicate_obj, value, array_aware: false)
         return value unless predicate_obj[:formatter]
         if array_aware && value.is_a?(Array)
-          value.map { |v| invoke_extension('predicate formatter') { predicate_obj[:formatter].call(v) } }
+          value.each_with_index.map do |v, index|
+            with_diagnostic_path([*diagnostic_error_path, index]) do
+              invoke_extension('predicate formatter') { predicate_obj[:formatter].call(v) }
+            end
+          end
         else
           invoke_extension('predicate formatter') { predicate_obj[:formatter].call(value) }
         end
       end
 
       def build_predicate_node(predicate_obj, attr, args)
+        with_error_path(:predicate) { build_predicate_node_at_path(predicate_obj, attr, args) }
+      end
+
+      def build_predicate_node_at_path(predicate_obj, attr, args)
         unless Compatibility.supported?(@model, predicate_obj)
           return handle_error("Scry: predicate is not supported by this adapter")
         end
@@ -397,7 +445,12 @@ module Scry
         # collections remain one argument for collection predicates.
         node = if predicate_obj[:arel_predicate]
           begin
-            attr.public_send(predicate_obj[:arel_predicate], *args)
+            if @filter[:type].to_s == 'association' && ASSOCIATION_MEMBERSHIP_PREDICATES.include?(predicate_obj[:arel_predicate].to_sym)
+              operand_path = args.length == 1 ? field_path(:args, 0) : field_path(:args)
+              with_diagnostic_path(operand_path) { attr.public_send(predicate_obj[:arel_predicate], *args) }
+            else
+              attr.public_send(predicate_obj[:arel_predicate], *args)
+            end
           rescue NoMethodError
             return handle_error("Scry: Arel predicate #{predicate_obj[:arel_predicate].inspect} failed")
           end
@@ -419,7 +472,7 @@ module Scry
       end
 
       def invoke_extension(label, &block)
-        Scry.invoke_callback(label:, model: @model, context: @context, path: @path || [], &block)
+        Scry.invoke_callback(label:, model: @model, context: @context, path: diagnostic_error_path, &block)
       end
 
       def applicable_property_transforms(property, tokens)
@@ -469,7 +522,8 @@ module Scry
       end
 
       def apply_attribute_transforms(attr, transforms)
-        apply_transforms(attr, transforms, label: 'attribute', map_arrays: false)
+        field = @filter.key?(:association) ? :association : :property
+        with_error_path(field) { apply_transforms(attr, transforms, label: 'attribute', map_arrays: false) }
       end
 
       def apply_value_transforms(value, transforms)
@@ -483,7 +537,11 @@ module Scry
       def apply_transforms(operand, transforms, label:, map_arrays:)
         return operand if transforms.nil? || transforms.empty?
         if map_arrays && operand.is_a?(Array)
-          return operand.map { |el| apply_transforms(el, transforms, label: label, map_arrays: true) }
+          return operand.each_with_index.map do |el, index|
+            with_diagnostic_path([*diagnostic_error_path, index]) do
+              apply_transforms(el, transforms, label: label, map_arrays: true)
+            end
+          end
         end
         transforms.reduce(operand) do |acc, t|
           invoke_extension("#{label} transform") { t[:block].call(acc, @context) }
